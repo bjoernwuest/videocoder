@@ -4,71 +4,147 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>videocoder</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236366f1'/><path d='M12 9l12 7-12 7z' fill='white'/></svg>">
 <style>
-  :root { color-scheme: light dark; --bg: #fff; --fg: #1a1a1a; --muted: #666; --line: #ddd; --accent: #2563eb; --err: #c62828; --ok: #2e7d32; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #16181c; --fg: #e6e6e6; --muted: #999; --line: #333; --accent: #60a5fa; --err: #ef5350; --ok: #66bb6a; } }
-  body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; background: var(--bg); color: var(--fg); }
-  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-  h1 { font-size: 18px; margin: 0 16px 0 0; }
-  button, select, input { font: inherit; padding: 4px 8px; }
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6fa; --surface: #fff; --surface-2: #f0f1f6; --fg: #1d1f27; --muted: #6b7080; --line: #e4e6ee;
+    --accent: #6366f1; --accent-fg: #fff; --radius: 12px; --shadow: 0 1px 2px rgb(16 18 27 / 6%), 0 4px 16px rgb(16 18 27 / 6%);
+    --c-waiting: #64748b; --c-pending: #0ea5e9; --c-needs_review: #d97706; --c-running: #6366f1;
+    --c-done: #16a34a; --c-error: #dc2626; --c-missing: #be185d;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg: #0f1117; --surface: #171a23; --surface-2: #1f2330; --fg: #e7e9f0; --muted: #8b90a0; --line: #272b38;
+    --accent: #818cf8; --accent-fg: #0f1117; --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 30%);
+    --c-waiting: #94a3b8; --c-pending: #38bdf8; --c-needs_review: #fbbf24; --c-running: #818cf8;
+    --c-done: #4ade80; --c-error: #f87171; --c-missing: #f472b6;
+  } }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--fg); }
+  header { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 12px 24px; background: color-mix(in srgb, var(--surface) 80%, transparent); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line); }
+  h1 { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -.01em; margin: 0 16px 0 0; }
+  h1::before { content: ""; width: 26px; height: 26px; border-radius: 7px; background: var(--accent)
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M12 9l12 7-12 7z' fill='white'/></svg>") center/100%; }
+  main { padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
+  button, select, input { font: inherit; color: inherit; }
+  button, select { padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer;
+    transition: background .15s, border-color .15s; }
+  button:hover, select:hover { background: var(--surface-2); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, black); }
+  button.danger { color: var(--c-error); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  header label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+  .sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: auto; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  td.path { word-break: break-all; }
-  tr.row { cursor: pointer; } tr.row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-  .status { font-weight: 600; white-space: nowrap; }
-  .s-error, .s-missing { color: var(--err); } .s-done { color: var(--ok); } .s-needs_review { color: #e09000; } .s-running { color: var(--accent); }
+  th { position: sticky; top: 0; background: var(--surface-2); color: var(--muted); font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.path { overflow-wrap: anywhere; }
+  td.mono .muted { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+  #bulkbar { display: flex; gap: 8px; align-items: center; }
+  #bulkbar[hidden] { display: none; }
+  td.mono, .mono { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 13px; }
+  tr.row { cursor: pointer; transition: background .1s; } tr.row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  tr.sel { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    white-space: nowrap; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .s-running .pill::before, .pill.s-running::before { animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .s-waiting { --c: var(--c-waiting); }
+  .s-pending { --c: var(--c-pending); }
+  .s-needs_review { --c: var(--c-needs_review); }
+  .s-running { --c: var(--c-running); }
+  .s-done { --c: var(--c-done); }
+  .s-error { --c: var(--c-error); }
+  .s-missing { --c: var(--c-missing); }
   .muted { color: var(--muted); font-size: 12px; }
-  progress { width: 120px; }
-  dialog { width: min(760px, 95vw); background: var(--bg); color: var(--fg); border: 1px solid var(--line); }
-  dialog label { display: block; margin: 8px 0 2px; font-weight: 600; }
-  dialog input { width: 100%; box-sizing: border-box; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
-  pre { background: color-mix(in srgb, var(--fg) 6%, transparent); padding: 8px; max-height: 300px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  #results button { display: block; margin: 2px 0; text-align: left; width: 100%; }
+  progress { width: 140px; height: 6px; margin-top: 6px; appearance: none; border: 0; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
+  progress::-webkit-progress-bar { background: var(--surface-2); }
+  progress::-webkit-progress-value { background: var(--accent); border-radius: 3px; }
+  progress::-moz-progress-bar { background: var(--accent); border-radius: 3px; }
+  .empty { padding: 48px; text-align: center; color: var(--muted); }
+  dialog { width: min(820px, calc(100vw - 32px)); padding: 0; background: var(--surface); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 16px; box-shadow: 0 24px 64px rgb(0 0 0 / 30%); }
+  dialog::backdrop { background: rgb(10 12 20 / 50%); backdrop-filter: blur(3px); }
+  dialog[open] { animation: pop .18s ease-out; }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+  .d-head { padding: 20px 24px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: start; }
+  .d-head h2 { flex: 1; font-size: 16px; margin: 0 0 6px; word-break: break-all; }
+  .d-body { padding: 8px 24px 20px; }
+  fieldset { border: 0; padding: 0; margin: 16px 0 0; }
+  legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 4px; }
+  dialog label { display: block; margin: 10px 0 4px; font-size: 13px; font-weight: 500; }
+  dialog input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  dialog input:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 14px; }
+  .row-input { display: flex; gap: 8px; }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; max-height: 300px; overflow: auto;
+    white-space: pre-wrap; font-size: 12px; margin: 16px 0 0; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--line); background: var(--surface-2);
+    border-radius: 0 0 16px 16px; }
+  #results { display: grid; gap: 4px; margin-top: 6px; }
+  #results button { text-align: left; }
+  @media (max-width: 700px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+    th:nth-child(5), td:nth-child(5) { display: none; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>videocoder</h1>
-  <button id="scan">Scan now</button>
+  <button id="scan" class="primary">Scan now</button>
   <button id="pause"></button>
   <label>Status <select id="filter"><option value="">all</option></select></label>
   <span style="flex:1"></span>
-  <span id="selinfo" class="muted"></span>
-  <button id="bulkImdb">Set IMDB ID…</button>
-  <button id="bulkRestart">Restart</button>
-  <button id="bulkRepeat">Repeat</button>
+  <span id="bulkbar" hidden>
+    <span id="selinfo" class="muted"></span>
+    <span class="sep"></span>
+    <button id="bulkImdb">Set IMDB ID…</button>
+    <button id="bulkRestart">Restart</button>
+    <button id="bulkRepeat">Repeat</button>
+  </span>
 </header>
-<table>
+<main><div class="card"><table>
   <thead><tr><th><input type="checkbox" id="all" aria-label="Select all"></th><th>Status</th><th>Source</th><th>IMDB</th><th>Target</th></tr></thead>
   <tbody id="jobs"></tbody>
-</table>
+</table><div id="empty" class="empty" hidden>No videos here yet.</div></div></main>
 
 <dialog id="dlg">
   <form method="dialog" id="form">
-    <h2 id="d-title" style="font-size:16px;word-break:break-all"></h2>
-    <div id="d-status"></div>
+    <div class="d-head"><div style="flex:1"><h2 id="d-title"></h2><span id="d-status"></span></div>
+      <button value="close" aria-label="Close">✕</button></div>
+    <div class="d-body">
+    <fieldset><legend>Identification</legend>
     <label for="f-imdb">IMDB ID</label>
-    <input id="f-imdb" placeholder="tt0000000">
+    <input id="f-imdb" class="mono" placeholder="tt0000000">
     <input id="f-imdb-title" type="hidden">
     <div class="muted" id="d-match"></div>
     <label for="f-search">Search OMDb</label>
-    <div style="display:flex;gap:8px"><input id="f-search"><button type="button" id="searchBtn">Search</button></div>
+    <div class="row-input"><input id="f-search"><button type="button" id="searchBtn">Search</button></div>
     <div id="results"></div>
     <label for="f-target">Target path (relative to output)</label>
-    <input id="f-target">
-    <div class="grid" id="params"></div>
+    <input id="f-target"></fieldset>
+    <fieldset><legend>Encoding overrides <span style="text-transform:none;font-weight:400">· empty = default</span></legend>
+    <div class="grid" id="params"></div></fieldset>
+    <pre id="d-log" hidden></pre>
+    </div>
     <div class="actions">
-      <button type="button" id="save">Save</button>
+      <button type="button" id="save" class="primary">Save</button>
       <button type="button" data-act="restart">Restart</button>
       <button type="button" data-act="repeat">Save &amp; repeat</button>
-      <button type="button" data-act="overwrite">Overwrite target</button>
+      <button type="button" data-act="overwrite" class="danger">Overwrite target</button>
       <button type="button" data-act="markdone">Mark done</button>
       <span style="flex:1"></span>
       <button value="close">Close</button>
     </div>
-    <pre id="d-log" hidden></pre>
   </form>
 </dialog>
 
@@ -105,32 +181,34 @@ function render() {
   const counts = Object.fromEntries(STATUSES.map((s) => [s, jobs.filter((j) => j.status === s).length]));
   for (const o of $("#filter").options) if (o.value) o.textContent = `${o.value} (${counts[o.value]})`;
   $("#pause").textContent = st.paused ? "Resume queue" : "Pause queue";
-  $("#selinfo").textContent = selected.size ? `${selected.size} selected` : "";
+  $("#selinfo").textContent = `${selected.size} selected`;
+  $("#bulkbar").hidden = !selected.size;
   const rows = jobs.filter((j) => !f || j.status === f).map((j) => {
     const cb = el("input", { type: "checkbox", checked: selected.has(j.id), ariaLabel: "Select" });
     cb.onclick = (e) => { e.stopPropagation(); cb.checked ? selected.add(j.id) : selected.delete(j.id); render(); };
-    const statusCell = el("td", { className: `status s-${j.status}`, textContent: j.status });
+    const statusCell = el("td", { className: `s-${j.status}` }, el("span", { className: "pill", textContent: j.status.replace("_", " ") }));
     if (st.running?.id === j.id) {
       const p = st.running.progress;
       statusCell.append(el("br"), el("progress", { max: 100, value: p.pct }),
         el("div", { className: "muted", textContent: `${p.pct.toFixed(1)}% · ${p.fps} fps · ETA ${fmtEta(p.eta)}` }));
     }
-    const tr = el("tr", { className: "row" }, el("td", {}, cb), statusCell,
+    const tr = el("tr", { className: selected.has(j.id) ? "row sel" : "row" }, el("td", {}, cb), statusCell,
       el("td", { className: "path", textContent: j.source_rel_path }),
-      el("td", {}, j.imdb_id ?? "—", el("div", { className: "muted", textContent: j.imdb_title ?? "" })),
+      el("td", { className: "mono" }, j.imdb_id ?? "—", el("div", { className: "muted", textContent: j.imdb_title ?? "" })),
       el("td", { className: "path", textContent: j.target }));
     tr.onclick = () => openJob(j.id);
     return tr;
   });
   $("#jobs").replaceChildren(...rows);
+  $("#empty").hidden = rows.length > 0;
 }
 
 async function openJob(id) {
   const j = current = await api(`/api/jobs/${id}`);
   const o = JSON.parse(j.overrides || "{}");
   $("#d-title").textContent = j.source_rel_path;
-  $("#d-status").className = `status s-${j.status}`;
-  $("#d-status").textContent = j.status;
+  $("#d-status").className = `pill s-${j.status}`;
+  $("#d-status").textContent = j.status.replace("_", " ");
   $("#f-imdb").value = j.imdb_id ?? "";
   $("#f-imdb-title").value = j.imdb_title ?? "";
   $("#d-match").textContent = j.imdb_title ? `${j.imdb_title} — matched from: ${j.imdb_source}` : "";
