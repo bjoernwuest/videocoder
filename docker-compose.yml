@@ -1,0 +1,16 @@
+services:
+  videocoder:
+    image: ghcr.io/bjoernwuest/videocoder:latest
+    restart: unless-stopped
+    # Run as the owner of your media files (33:33 = Nextcloud's http/www-data).
+    user: "${PUID:-33}:${PGID:-33}"
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ${INPUT_PATH}:/input
+      - ${OUTPUT_PATH}:/output
+      - ./data:/data
+    # Intel/AMD hardware encoding: uncomment and set VIDEO_ENCODER / FFMPEG_*_ARGS in .env
+    # devices:
+    #   - /dev/dri:/dev/dri

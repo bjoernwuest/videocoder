@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>videocoder</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1a1a1a; --muted: #666; --line: #ddd; --accent: #2563eb; --err: #c62828; --ok: #2e7d32; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #16181c; --fg: #e6e6e6; --muted: #999; --line: #333; --accent: #60a5fa; --err: #ef5350; --ok: #66bb6a; } }
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; background: var(--bg); color: var(--fg); }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  h1 { font-size: 18px; margin: 0 16px 0 0; }
+  button, select, input { font: inherit; padding: 4px 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.path { word-break: break-all; }
+  tr.row { cursor: pointer; } tr.row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .status { font-weight: 600; white-space: nowrap; }
+  .s-error, .s-missing { color: var(--err); } .s-done { color: var(--ok); } .s-needs_review { color: #e09000; } .s-running { color: var(--accent); }
+  .muted { color: var(--muted); font-size: 12px; }
+  progress { width: 120px; }
+  dialog { width: min(760px, 95vw); background: var(--bg); color: var(--fg); border: 1px solid var(--line); }
+  dialog label { display: block; margin: 8px 0 2px; font-weight: 600; }
+  dialog input { width: 100%; box-sizing: border-box; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  pre { background: color-mix(in srgb, var(--fg) 6%, transparent); padding: 8px; max-height: 300px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #results button { display: block; margin: 2px 0; text-align: left; width: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <h1>videocoder</h1>
+  <button id="scan">Scan now</button>
+  <button id="pause"></button>
+  <label>Status <select id="filter"><option value="">all</option></select></label>
+  <span style="flex:1"></span>
+  <span id="selinfo" class="muted"></span>
+  <button id="bulkImdb">Set IMDB ID…</button>
+  <button id="bulkRestart">Restart</button>
+  <button id="bulkRepeat">Repeat</button>
+</header>
+<table>
+  <thead><tr><th><input type="checkbox" id="all" aria-label="Select all"></th><th>Status</th><th>Source</th><th>IMDB</th><th>Target</th></tr></thead>
+  <tbody id="jobs"></tbody>
+</table>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h2 id="d-title" style="font-size:16px;word-break:break-all"></h2>
+    <div id="d-status"></div>
+    <label for="f-imdb">IMDB ID</label>
+    <input id="f-imdb" placeholder="tt0000000">
+    <input id="f-imdb-title" type="hidden">
+    <div class="muted" id="d-match"></div>
+    <label for="f-search">Search OMDb</label>
+    <div style="display:flex;gap:8px"><input id="f-search"><button type="button" id="searchBtn">Search</button></div>
+    <div id="results"></div>
+    <label for="f-target">Target path (relative to output)</label>
+    <input id="f-target">
+    <div class="grid" id="params"></div>
+    <div class="actions">
+      <button type="button" id="save">Save</button>
+      <button type="button" data-act="restart">Restart</button>
+      <button type="button" data-act="repeat">Save &amp; repeat</button>
+      <button type="button" data-act="overwrite">Overwrite target</button>
+      <button type="button" data-act="markdone">Mark done</button>
+      <span style="flex:1"></span>
+      <button value="close">Close</button>
+    </div>
+    <pre id="d-log" hidden></pre>
+  </form>
+</dialog>
+
+<script>
+const STATUSES = ["waiting", "pending", "needs_review", "running", "done", "error", "missing"];
+const PARAMS = { languageOrder: "Language order", videoEncoder: "Video encoder", qualityFlag: "Quality flag", quality: "Quality",
+  preset: "Preset", audioCodec: "Audio codec", subtitleCodec: "Bitmap subtitle codec", threads: "Threads",
+  inputArgs: "ffmpeg input args", outputArgs: "ffmpeg output args" };
+const $ = (s) => document.querySelector(s);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+const selected = new Set();
+let jobs = [], st = {}, current = null;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { "content-type": "application/json" }, ...opts,
+    body: opts.body && JSON.stringify(opts.body) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+const act = (fn) => async (...a) => { try { await fn(...a); await refresh(); } catch (e) { alert(e.message); } };
+const fmtEta = (s) => s == null ? "" : `${Math.floor(s / 3600)}h ${String(Math.floor(s / 60) % 60).padStart(2, "0")}m`;
+
+for (const s of STATUSES) $("#filter").append(el("option", { value: s, textContent: s }));
+$("#filter").onchange = render;
+
+async function refresh() {
+  [jobs, st] = await Promise.all([api("/api/jobs"), api("/api/state")]);
+  render();
+}
+
+function render() {
+  const f = $("#filter").value;
+  const counts = Object.fromEntries(STATUSES.map((s) => [s, jobs.filter((j) => j.status === s).length]));
+  for (const o of $("#filter").options) if (o.value) o.textContent = `${o.value} (${counts[o.value]})`;
+  $("#pause").textContent = st.paused ? "Resume queue" : "Pause queue";
+  $("#selinfo").textContent = selected.size ? `${selected.size} selected` : "";
+  const rows = jobs.filter((j) => !f || j.status === f).map((j) => {
+    const cb = el("input", { type: "checkbox", checked: selected.has(j.id), ariaLabel: "Select" });
+    cb.onclick = (e) => { e.stopPropagation(); cb.checked ? selected.add(j.id) : selected.delete(j.id); render(); };
+    const statusCell = el("td", { className: `status s-${j.status}`, textContent: j.status });
+    if (st.running?.id === j.id) {
+      const p = st.running.progress;
+      statusCell.append(el("br"), el("progress", { max: 100, value: p.pct }),
+        el("div", { className: "muted", textContent: `${p.pct.toFixed(1)}% · ${p.fps} fps · ETA ${fmtEta(p.eta)}` }));
+    }
+    const tr = el("tr", { className: "row" }, el("td", {}, cb), statusCell,
+      el("td", { className: "path", textContent: j.source_rel_path }),
+      el("td", {}, j.imdb_id ?? "—", el("div", { className: "muted", textContent: j.imdb_title ?? "" })),
+      el("td", { className: "path", textContent: j.target }));
+    tr.onclick = () => openJob(j.id);
+    return tr;
+  });
+  $("#jobs").replaceChildren(...rows);
+}
+
+async function openJob(id) {
+  const j = current = await api(`/api/jobs/${id}`);
+  const o = JSON.parse(j.overrides || "{}");
+  $("#d-title").textContent = j.source_rel_path;
+  $("#d-status").className = `status s-${j.status}`;
+  $("#d-status").textContent = j.status;
+  $("#f-imdb").value = j.imdb_id ?? "";
+  $("#f-imdb-title").value = j.imdb_title ?? "";
+  $("#d-match").textContent = j.imdb_title ? `${j.imdb_title} — matched from: ${j.imdb_source}` : "";
+  $("#f-search").value = j.imdb_source && j.imdb_source !== "manual" ? j.imdb_source : j.source_rel_path.split("/")[0];
+  $("#results").replaceChildren();
+  $("#f-target").value = j.target_rel_path ?? "";
+  $("#f-target").placeholder = j.target;
+  $("#params").replaceChildren(...Object.entries(PARAMS).map(([k, label]) => el("div", {},
+    el("label", { htmlFor: `p-${k}`, textContent: label }),
+    el("input", { id: `p-${k}`, value: o[k] ?? "", placeholder: st.defaults[k] || "(empty)" }))));
+  $("#d-log").hidden = !j.error_log;
+  $("#d-log").textContent = j.error_log ?? "";
+  $("#dlg").showModal();
+}
+
+$("#searchBtn").onclick = act(async () => {
+  const res = await api(`/api/omdb?s=${encodeURIComponent($("#f-search").value)}`);
+  $("#results").replaceChildren(...(res.length ? res : [null]).map((r) => r
+    ? Object.assign(el("button", { type: "button", textContent: `${r.Title} (${r.Year}) · ${r.Type} · ${r.imdbID}` }),
+        { onclick: () => { $("#f-imdb").value = r.imdbID; $("#f-imdb-title").value = `${r.Title} (${r.Year})`; } })
+    : el("div", { className: "muted", textContent: "No results" })));
+});
+
+const formPatch = () => {
+  const p = { target_rel_path: $("#f-target").value.trim(),
+    overrides: Object.fromEntries(Object.keys(PARAMS).map((k) => [k, $(`#p-${k}`).value.trim()])) };
+  const id = $("#f-imdb").value.trim();
+  if (id !== (current.imdb_id ?? "")) Object.assign(p, { imdb_id: id, imdb_title: $("#f-imdb-title").value });
+  return p;
+};
+$("#save").onclick = act(async () => { await api(`/api/jobs/${current.id}`, { method: "PATCH", body: formPatch() }); $("#dlg").close(); });
+for (const b of document.querySelectorAll("[data-act]"))
+  b.onclick = act(async () => {
+    if (b.dataset.act === "repeat") await api(`/api/jobs/${current.id}`, { method: "PATCH", body: formPatch() });
+    await api(`/api/jobs/${current.id}/${b.dataset.act}`, { method: "POST" });
+    $("#dlg").close();
+  });
+
+$("#scan").onclick = act(() => api("/api/scan", { method: "POST" }));
+$("#pause").onclick = act(() => api("/api/queue", { method: "POST", body: { paused: !st.paused } }));
+$("#all").onclick = (e) => { const f = $("#filter").value;
+  for (const j of jobs) if (!f || j.status === f) e.target.checked ? selected.add(j.id) : selected.delete(j.id); render(); };
+const bulk = (body) => act(async () => {
+  if (!selected.size) return alert("Select jobs first");
+  const { errors } = await api("/api/bulk", { method: "POST", body: { ids: [...selected], ...body } });
+  if (errors.length) alert(errors.join("\n"));
+  selected.clear();
+});
+$("#bulkRestart").onclick = bulk({ action: "restart" });
+$("#bulkRepeat").onclick = bulk({ action: "repeat" });
+$("#bulkImdb").onclick = () => { const id = prompt("IMDB ID for selected jobs (tt…)"); if (id) bulk({ patch: { imdb_id: id.trim() } })(); };
+
+refresh();
+setInterval(() => { if (!$("#dlg").open) refresh(); }, 2000);
+</script>
+</body>
+</html>

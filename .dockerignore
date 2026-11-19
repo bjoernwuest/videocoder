@@ -1,0 +1,7 @@
+.git
+.github
+test
+data
+.env
+.playwright-mcp
+SPEC.md
