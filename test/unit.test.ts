@@ -56,5 +56,7 @@ test("verify", () => {
   const p = (d: string, n: number): Probe => ({ format: { duration: d }, streams: Array.from({ length: n }, (_, i) => s(i, "audio")) });
   expect(verify(p("100", 2), p("101.5", 2))).toBeNull();
   expect(verify(p("100", 2), p("90", 2))).toContain("Duration");
+  expect(verify(p("7200", 2), p("7193", 2), 0.1)).toBeNull(); // 7 s off = 0.097 %
+  expect(verify(p("7200", 2), p("7190", 2), 0.1)).toContain("Duration");
   expect(verify(p("100", 2), p("100", 1))).toContain("audio");
 });

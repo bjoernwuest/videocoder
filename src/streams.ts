@@ -1,4 +1,4 @@
-import type { EncParams } from "./config";
+import { cfg, type EncParams } from "./config";
 
 export type Stream = {
   index: number;
@@ -65,9 +65,10 @@ export function buildArgs(probe: Probe, src: string, out: string, p: EncParams):
 }
 
 /** Returns a problem description, or null if the output matches the source. */
-export function verify(src: Probe, out: Probe): string | null {
+export function verify(src: Probe, out: Probe, tolerancePct = cfg.durationTolerance): string | null {
   const d1 = Number(src.format.duration), d2 = Number(out.format.duration);
-  if (!(Math.abs(d1 - d2) < 3)) return `Duration mismatch: source ${d1}s, output ${d2}s`;
+  const tol = Math.max(3, (d1 * tolerancePct) / 100);
+  if (!(Math.abs(d1 - d2) <= tol)) return `Duration mismatch: source ${d1}s, output ${d2}s (tolerance ${tol.toFixed(1)}s)`;
   for (const t of ["audio", "subtitle"]) {
     const a = byType(src, t).length, b = byType(out, t).length;
     if (a !== b) return `${t} stream count mismatch: source ${a}, output ${b}`;

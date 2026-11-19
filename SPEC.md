@@ -25,7 +25,7 @@ language-ordered audio/subtitle streams, and a web UI. Replaces the Java/Postgre
    - Auto-accept; the UI shows the matched candidate and the title. No match → `needs_review`.
    - Results are cached per normalized query in the `omdb_cache` table.
 4. **Transcode** (one job at a time) to `<target>.part`, under `nice -n 19`.
-5. **Verify**: exit code 0, duration within ±3 s of the source, same number of audio and subtitle streams.
+5. **Verify**: exit code 0, duration within `DURATION_TOLERANCE` % of the source (default 0.5 %, at least ±3 s), same number of audio and subtitle streams.
    - OK → rename `.part` → `.mkv`, rename the source to `.mkv.processed`, status `done`.
    - Fail → delete `.part`, status `error`, keep the last ~200 lines of stderr. The source is untouched.
 6. **Retention**: delete `.processed` sources older than `SOURCE_RETENTION_DAYS` (default 0 = never).

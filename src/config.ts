@@ -10,6 +10,8 @@ export const cfg = {
   retentionDays: Number(e.SOURCE_RETENTION_DAYS ?? 0),
   omdbKey: e.OMDB_API_KEY ?? "",
   uiPassword: e.UI_PASSWORD ?? "",
+  /** Accepted output/source duration difference, in % of source length (never below 3 s). */
+  durationTolerance: Number(e.DURATION_TOLERANCE ?? 0.5),
 };
 
 /** Encoding parameters: env defaults, overridable per job (jobs.overrides JSON). */
