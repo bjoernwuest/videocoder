@@ -1,14 +1,9 @@
 // End-to-end: generated MKV → scan → needs_review (no OMDb key) → set IMDB ID → transcode → verify.
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const root = mkdtempSync(join(tmpdir(), "videocoder-e2e-"));
-Object.assign(process.env, {
-  INPUT_DIR: join(root, "in"), OUTPUT_DIR: join(root, "out"), DATA_DIR: join(root, "data"),
-  STABLE_MINUTES: "0", OMDB_API_KEY: "", PRESET: "ultrafast",
-});
+const root = process.env.TEST_ROOT!; // env set in test/setup.ts
 
 test("full pipeline", async () => {
   const dir = join(root, "in", "Some Movie (2001)");
