@@ -17,12 +17,15 @@ function authorized(req: Request) {
 const view = ({ error_log, ...j }: any) => ({ ...j, target: effectiveTarget(j), has_error: !!error_log });
 const index = join(import.meta.dir, "../public/index.html");
 
+const pub = join(import.meta.dir, "../public");
+
 async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
   const m = req.method;
   const body = () => req.json() as Promise<any>;
 
+  if (/^\/favicon\.(svg|png|ico)$/.test(path) && m === "GET") return new Response(Bun.file(join(pub, path)));
   if (path === "/" && m === "GET") return new Response(Bun.file(index));
   if (path === "/api/jobs" && m === "GET") return Response.json(allJobs().map(view));
   if (path === "/api/state" && m === "GET") return Response.json({ paused: state.paused, running: state.running, defaults });
